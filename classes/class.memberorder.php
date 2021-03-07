@@ -77,7 +77,14 @@
 			if(!$id)
 				return false;
 
-			$dbobj = $wpdb->get_row("SELECT * FROM $wpdb->pmpro_membership_orders WHERE id = '$id' LIMIT 1");
+			$dbobj = $wpdb->get_row("SELECT mo1.*, mo2.id IS NOT NULL AS `renewal`
+									 FROM $wpdb->pmpro_membership_orders mo1
+									 	LEFT JOIN $wpdb->pmpro_membership_orders mo2
+										ON mo1.user_id = mo2.user_id AND mo1.id > mo2.id
+											AND mo1.gateway_environment = mo2.gateway_environment
+											AND mo1.total > 0 AND mo2.total > 0
+									 WHERE mo1.id = '$id'
+									 LIMIT 1");
 
 			if($dbobj)
 			{
@@ -137,6 +144,7 @@
 				$this->timestamp = strtotime( $dbobj->timestamp );
 				$this->affiliate_id = $dbobj->affiliate_id;
 				$this->affiliate_subid = $dbobj->affiliate_subid;
+				$this->renewal = $dbobj->renewal;
 
 				$this->notes = $dbobj->notes;
 				$this->checkout_id = $dbobj->checkout_id;

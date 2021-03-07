@@ -286,7 +286,8 @@ $csv_file_header_array = array(
 	"gateway",
 	"gateway_environment",
 	"payment_transaction_id",
-	"subscription_transaction_id",
+	"renewal",
+	"subscription_transaction_id",	
 	"discount_code_id",
 	"discount_code",
 	"tos_consent_post_id",
@@ -325,6 +326,7 @@ $default_columns = array(
 	array( "order", "gateway" ),
 	array( "order", "gateway_environment" ),
 	array( "order", "payment_transaction_id" ),
+	array( "order", "renewal" ),
 	array( "order", "subscription_transaction_id" ),
 	array( "discount_code", "id" ),
 	array( "discount_code", "code" )
