@@ -616,15 +616,34 @@ function pmpro_getRevenue($period, $levels = NULL)
  * @param  array  $level_ids to include in report. Defaults to all.
  * @return float  revenue.
  */
-function pmpro_get_revenue_between_dates( $start_date, $end_date = '', $level_ids = null ) {
+function pmpro_get_revenue_between_dates( $start_date, $end_date = '', $level_ids = null, $discount_code_id = null ) {
 	global $wpdb;
-	$sql_query = "SELECT SUM(total) FROM $wpdb->pmpro_membership_orders WHERE status NOT IN('refunded', 'review', 'token', 'error') AND timestamp >= '" . esc_sql( $start_date ) . " 00:00:00'";
+
+	$sql_query = "SELECT SUM(total) FROM $wpdb->pmpro_membership_orders ";
+	
+	// Need join if discount code is passed in.
+	if ( ! empty( $discount_code_id ) ) {
+		$sqlQuery .= "LEFT JOIN $wpdb->pmpro_discount_codes_uses dc ON o.id = dc.order_id ";
+	}
+	
+	// Check status and start date.
+	$sql_query .= "WHERE status NOT IN('refunded', 'review', 'token', 'error') AND timestamp >= '" . esc_sql( $start_date ) . " 00:00:00'";
+	
+	// Check end date if passed in.
 	if ( ! empty( $end_date ) ) {
 		$sql_query .= " AND timestamp <= '" . esc_sql( $end_date ) . " 23:59:59'";
 	}
+	
+	// Check level ids if passed in.
 	if ( ! empty( $level_ids ) ) {
 		$sql_query .= ' AND membership_id IN(' . implode( ', ', $levels ) . ') ';
 	}
+	
+	// Check discount code if passed in.
+	if ( ! empty( $discount_code_id ) ) {
+		$sql_query .= " AND dc.code_id = '" . intval( $discount_code_id ) . "' ";
+	}
+	
 	return $wpdb->get_var($sql_query);
 }
 
