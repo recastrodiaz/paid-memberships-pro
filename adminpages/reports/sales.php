@@ -19,13 +19,15 @@ if($gateway_environment == "sandbox")
 else
 	$pmpro_reports['sales'] = __('Sales and Revenue', 'paid-memberships-pro' );
 
-//queue Google Visualization JS on report page
+/**
+ * Stuff to run on init to support these reports.
+ */
 function pmpro_report_sales_init()
 {
+	// Enqueue Google Visualization JS on report page.
 	if ( is_admin() && isset( $_REQUEST['report'] ) && $_REQUEST[ 'report' ] == 'sales' && isset( $_REQUEST['page'] ) && $_REQUEST[ 'page' ] == 'pmpro-reports' ) {
 		wp_enqueue_script( 'corechart', plugins_url( 'js/corechart.js',  plugin_dir_path( __DIR__ ) ) );
 	}
-
 }
 add_action("init", "pmpro_report_sales_init");
 
@@ -278,11 +280,26 @@ function pmpro_report_sales_page()
 	if ( 0 !== $units_in_period ) {
 		$average = $total_in_period / $units_in_period; // Not including this unit.
 	}
+	
+	$csv_export_link = add_query_arg(
+		array(
+			'type' => $type,
+			'period' => $period,
+			'format' => 'csv',
+			'month' => $month,
+			'year' => $year,
+			'level' => $l,
+			'discount_code' => $discount_code,
+		),
+		get_rest_url( null, 'pmpro/v1/revenue' )
+	);
 	?>
-	<form id="posts-filter" method="get" action="">
-	<h1>
+	<h1 class="wp-heading-inline">
 		<?php _e('Sales and Revenue', 'paid-memberships-pro' );?>
 	</h1>
+	<a target="_blank" href="<?php echo esc_url( $csv_export_link ); ?>" class="page-title-action"><?php esc_html_e( 'Export to CSV', 'paid-memberships-pro' ); ?></a>
+	
+	<form id="posts-filter" method="get" action="">	
 
 	<div class="tablenav top">
 		<?php _e('Show', 'paid-memberships-pro' )?>
@@ -636,14 +653,14 @@ function pmpro_get_revenue_between_dates( $start_date, $end_date = '', $level_id
 	
 	// Check level ids if passed in.
 	if ( ! empty( $level_ids ) ) {
-		$sql_query .= ' AND membership_id IN(' . implode( ', ', $levels ) . ') ';
+		$sql_query .= ' AND membership_id IN(' . implode( ', ', $level_ids ) . ') ';
 	}
 	
 	// Check discount code if passed in.
 	if ( ! empty( $discount_code_id ) ) {
 		$sql_query .= " AND dc.code_id = '" . intval( $discount_code_id ) . "' ";
 	}
-	
+
 	return $wpdb->get_var($sql_query);
 }
 
@@ -656,3 +673,85 @@ function pmpro_report_sales_delete_transients()
 }
 add_action("pmpro_after_checkout", "pmpro_report_sales_delete_transients");
 add_action("pmpro_updated_order", "pmpro_report_sales_delete_transients");
+
+/**
+ * Register endpoints for REST API and CSV exports.
+ */
+function pmpro_report_sales_rest_api_init() {
+	// Register API endpoint for revenue report.
+	register_rest_route( 'pmpro/v1', '/revenue', 
+	array(
+		array(
+			'methods' => WP_REST_Server::READABLE,
+			'callback' => 'pmpro_report_sales_revenue_endpoint',
+			'permission_callback' => function () {
+		    	return true;	//TODO: Check for manage_options or pmpro_orders
+			}
+		),
+	));
+}
+add_action( 'rest_api_init', 'pmpro_report_sales_rest_api_init' );
+
+/**
+ * Callback for revenue report CSV endpoint.
+ */
+function pmpro_report_sales_revenue_endpoint( $request ) {
+	$params = $request->get_params();
+	
+	$type = isset( $params['type'] ) ? sanitize_text_field( $params['type'] ) : null;
+	$period = isset( $params['period'] ) ? sanitize_text_field( $params['period'] ) : null;
+	$format = isset( $params['format'] ) ? sanitize_text_field( $params['format'] ) : 'csv';
+	$month = isset( $params['month'] ) ? intval( $params['month'] ) : null;
+	$year = isset( $params['year'] ) ? intval( $params['year'] ) : null;
+	$level_ids = isset( $params['level'] ) ? sanitize_text_field( $params['level'] ) : null;
+	$discount_code_id = isset( $params['discount_code'] ) ? intval( $params['discount_code'] ) : null;
+
+	// fix level ids format
+	if ( empty( $level_ids ) || $level_ids === '0' ) {
+		$level_ids = null;
+	} else {
+		$level_ids = explode( ',', $level_ids );
+	}
+
+	$data = array();
+		
+	if ( $type == 'revenue' ) {
+		if ( $period == 'monthly') {
+			$data[] = array( 'Month', 'Revenue' );
+			for( $i = 1; $i <= 12; $i++ ) {
+				$month_number = str_pad( $i, 2, 0, STR_PAD_LEFT );
+				$startdate = $year . '-' . $month_number . '-01';
+				$enddate = $year . '-' . $month_number . '-31';
+				$revenue = pmpro_get_revenue_between_dates( $startdate, $enddate, $level_ids, $discount_code_id );
+				$data[] = array( $startdate, $revenue );
+			}
+		}
+		// TODO: other periods
+	}
+	// TODO: other types
+	
+	if ( $format == 'csv' ) {
+		$filename = "revenue_report";
+		$headers = array();
+		$headers[] = "Content-Type: text/csv";
+		$headers[] = "Cache-Control: max-age=0, no-cache, no-store";
+		$headers[] = "Pragma: no-cache";
+		$headers[] = "Connection: close";
+		$headers[] = 'Content-Disposition: attachment; filename="' . sanitize_file_name( $filename ) . '.csv"';
+		
+		foreach( $headers as $header ) {
+			header( $header . "\r\n" );
+		}
+		
+		foreach( $data as $row ) {
+			echo str_replace( "\"", "\\\"", $row[0] ) . "," . str_replace( "\"", "\\\"", $row[1] );
+			echo "\r\n";
+		}
+		
+		exit;
+	} else {
+		// default JSON/etc format
+		return new WP_REST_Response( $data );
+	}	
+}
+ 
