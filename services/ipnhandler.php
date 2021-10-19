@@ -122,14 +122,14 @@ if ( $txn_type == "subscr_payment" ) {
 
 			//Check that the corresponding order has the same amount as what we're getting from PayPal
 			$amount = $_POST['mc_gross'];
-			
+
 			//Adjust gross for tax if provided
 			if( !empty($_POST['tax']) ) {
 				$amount = (float)$amount - (float)$_POST['tax'];
 			} else {
 				$morder->tax = 0;
 			}
-			
+
 			if ( (float) $amount != (float) $morder->total ) {
 				ipnlog( "ERROR: PayPal transaction #" . $_POST['tnx_id'] . " amount (" . $amount . ") is not the same as the PMPro order #" . $morder->code . " (" . $morder->total . ")." );
 			} else {
@@ -172,7 +172,7 @@ if ( $txn_type == "web_accept" && ! empty( $item_number ) ) {
 
 		//Check that the corresponding order has the same amount
 		$amount = $_POST['mc_gross'];
-		
+
 		//Adjust gross for tax if provided
 		if(!empty($_POST['tax']) ) {
 			$amount = (float)$amount - (float)$_POST['tax'];
@@ -208,7 +208,7 @@ if ( $txn_type == "recurring_payment" ) {
 	} else {
 		ipnlog( "ERROR: Couldn't find last order for this recurring payment (" . $subscr_id . ")." );
 	}
-		
+
 	pmpro_ipnExit();
 }
 
@@ -390,7 +390,7 @@ function pmpro_ipnExit() {
 				wp_mail( PMPRO_IPN_DEBUG, get_option( "blogname" ) . " IPN Log", nl2br( esc_html( $logstr ) ) );							
 			} else {
 				//email to admin
-				wp_mail( get_option( "admin_email" ), get_option( "blogname" ) . " IPN Log", nl2br( esc_html( $logstr ) ) );							
+				wp_mail( get_option( "admin_email" ), get_option( "blogname" ) . " IPN Log", nl2br( esc_html( $logstr ) ) );
 			}
 		}
 	}
@@ -496,6 +496,14 @@ function pmpro_ipnCheckReceiverEmail( $email ) {
 		$r = true;
 	}
 
+    if(!$r) {
+        if ( ! in_array( strtolower( PAYPAL_EXPRESS_SECONDARY_EMAIL ), $email ) ) {
+            $r = false;
+        } else {
+            $r = true;
+        }
+    }
+
 	$r = apply_filters( 'pmpro_ipn_check_receiver_email', $r, $email );
 
 	if ( $r ) {
@@ -514,7 +522,8 @@ function pmpro_ipnCheckReceiverEmail( $email ) {
 		}
 
 		//not yours
-		ipnlog( "ERROR: receiver_email (" . $receiver_email . ") and business email (" . $business . ") did not match (" . pmpro_getOption( 'gateway_email' ) . ")" );
+        $emailsForLog = print_r($email, true);
+		ipnlog( "ERROR: receiver_email (" . $receiver_email . ") and business email (" . $business . ") did not match (" . pmpro_getOption( 'gateway_email' ) . ") " . PAYPAL_EXPRESS_SECONDARY_EMAIL );
 
 		return false;
 	}
@@ -747,7 +756,7 @@ function pmpro_ipnSaveOrder( $txn_id, $last_order ) {
 				$morder->InitialPayment = $_POST['payment_gross'];    //not the initial payment, but the class is expecting that
 				$morder->PaymentAmount  = $_POST['payment_gross'];
 			}
-			
+
 			//check for tax
 			if ( isset( $_POST['tax'] ) && ! empty( $_POST['tax'] ) ) {
 				$morder->tax = (float) $_POST['tax'];
