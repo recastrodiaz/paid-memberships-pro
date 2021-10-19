@@ -332,7 +332,7 @@
 
 				$morder = new MemberOrder();
 				$morder->getMemberOrderByPayPalToken(sanitize_text_field($_REQUEST['token']));
-				
+
 				if( $morder->status === 'token' ){
 					$morder->Token = $morder->paypal_token; $pmpro_paypal_token = $morder->paypal_token;
 					if($morder->Token)
@@ -826,7 +826,21 @@
 			}
 
 			// Cancel at gateway
-			return $this->cancelSubscriptionAtGateway($order);
+			$success = $this->cancelSubscriptionAtGateway($order);
+            if(!$success) {
+                // Try cancelling on the other account
+                global $paypal_express_use_secondary_account;
+                $paypal_express_use_secondary_account = true;
+                $success = $this->cancelSubscriptionAtGateway($order);
+                $paypal_express_use_secondary_account = false;
+                if($success) {
+                    // Clear any errors if they exist
+                    $order->errorcode = null;
+                    $order->error = null;
+                    $order->shorterror = null;
+                }
+            }
+            return $success;
 		}
 
 		function cancelSubscriptionAtGateway(&$order) {
@@ -875,7 +889,7 @@
 				return false;
 			}
 		}
-		
+
 		function getTransactionStatus(&$order) {
 			$transaction_details = $order->Gateway->getTransactionDetailsByOrder( $order );
 			if( false === $transaction_details ){
@@ -906,7 +920,7 @@
 				return $this->getTransactionDetails( $order->payment_transaction_id );
 			}
 		}
-		
+
 		/**
 		 * Try to recover the real payment_transaction_id when payment_transaction_id === subscription_transaction_id === I-xxxxxxxx.
 		 *
@@ -963,10 +977,10 @@
 
 			// found the payment transaction id, it's the last one (the oldest)
 			$payment_transaction_id = end( $transaction_ids );
-			
+
 			return $payment_transaction_id;
 		}
-		
+
 		function getTransactionDetails($payment_transaction_id)
         	{
 			$nvpStr = "";
@@ -1004,6 +1018,19 @@
 				{
 					//get the subscription status
 					$status = $order->getGatewaySubscriptionStatus();
+                    if($status === false) {
+                        // Try checking for subscription status in the other account
+                        global $paypal_express_use_secondary_account;
+                        $paypal_express_use_secondary_account = true;
+                        $status = $order->getGatewaySubscriptionStatus();
+                        $paypal_express_use_secondary_account = false;
+                        if($status !== false) {
+                            // Clear any errors if they exist
+                            $order->errorcode = null;
+                            $order->error = null;
+                            $order->shorterror = null;
+                        }
+                    }
 
 					if(!empty($status) && !empty($status['NEXTBILLINGDATE']))
 					{
@@ -1059,7 +1086,7 @@
 
 			return $httpParsedResponseAr;
 		}
-        
+
         /**
 		 * PAYPAL Function
 		 * Send HTTP POST Request with uuid
@@ -1072,9 +1099,17 @@
 			global $gateway_environment;
 			$environment = $gateway_environment;
 
-			$API_UserName = pmpro_getOption("apiusername");
-			$API_Password = pmpro_getOption("apipassword");
-			$API_Signature = pmpro_getOption("apisignature");
+            global $paypal_express_use_secondary_account;
+            if(isset($paypal_express_use_secondary_account) && $paypal_express_use_secondary_account) {
+                error_log( "Using PAYPAL_EXPRESS_SECONDARY_ACCOUNT for $methodName_ $nvpStr_ $uuid" );
+                $API_UserName = PAYPAL_EXPRESS_SECONDARY_USER_NAME;
+                $API_Password = PAYPAL_EXPRESS_SECONDARY_PASSWORD;
+                $API_Signature = PAYPAL_EXPRESS_SECONDARY_SIGNATURE;
+            } else {
+                $API_UserName = pmpro_getOption("apiusername");
+                $API_Password = pmpro_getOption("apipassword");
+                $API_Signature = pmpro_getOption("apisignature");
+            }
 			$API_Endpoint = "https://api-3t.paypal.com/nvp";
 			if("sandbox" === $environment || "beta-sandbox" === $environment) {
 				$API_Endpoint = "https://api-3t.$environment.paypal.com/nvp";
@@ -1101,7 +1136,7 @@
 			if ( is_wp_error( $response ) ) {
                 return $response;
 			}
-            
+
             //extract the response details
             $httpParsedResponseAr = array();
             parse_str(wp_remote_retrieve_body($response), $httpParsedResponseAr);
