@@ -1014,6 +1014,19 @@
 				{
 					//get the subscription status
 					$status = $order->getGatewaySubscriptionStatus();
+                    if($status === false) {
+                        // Try checking for subscription status in the other account
+                        global $paypal_express_use_secondary_account;
+                        $paypal_express_use_secondary_account = true;
+                        $status = $order->getGatewaySubscriptionStatus();
+                        $paypal_express_use_secondary_account = false;
+                        if($status !== false) {
+                            // Clear any errors if they exist
+                            $order->errorcode = null;
+                            $order->error = null;
+                            $order->shorterror = null;
+                        }
+                    }
 
 					if(!empty($status) && !empty($status['NEXTBILLINGDATE']))
 					{
